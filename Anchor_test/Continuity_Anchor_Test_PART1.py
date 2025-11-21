@@ -10,6 +10,7 @@ import get_file_name
 import random
 from zipfile import ZipFile
 import pandas as pd
+import os
 
 ################################ Functions ###################################
 
@@ -69,15 +70,16 @@ def check_if_ok_and_get_var_form(anc_nt,ref_nt,alt_nt):
     return ''
 
 #############################################################################
-ancPath='/proj/snic2020/private/Analyses/per_chr_vcfs'
-vcf_path='/proj/snic2020/nobackup/private/ALLSITE_FILES/vcf_files/PER_CHR_VCFS'
 
 #Throw an error unless you have at least two arguments to command line
-if len(sys.argv)<3:
-    sys.exit('Input Error: The Anchor continuity test PART1 requires a command line input of format: python script.py the_chr anchor_ind')
+if len(sys.argv)<5:
+    sys.exit('Input Error: The Anchor continuity test PART1 requires a command line input of format: python script.py the_chr anchor_ind ancPath vcf_path outpath')
 
 the_chr=sys.argv[1]
 anchorind=sys.argv[2]
+ancPath=sys.argv[3]
+vcf_path=sys.argv[4]
+outpath=sys.argv[5]
 #print(the_chr)
 #print(anchorind)
 #input()
@@ -177,8 +179,10 @@ with ZipFile(ancPath+'/Ancestral_states.zip','r') as z:
                 l=AnchorInd.readline()
                 anc_l=anc_file.readline().decode('utf-8')
 
+
+
 #Write chr out_dict to text file
-with open('DIR_anchorind_hetcounts_perchr/chr'+the_chr+'_'+anchorind+'_HetPos.txt','w') as outf:    #write chr pos to chr file
+with open(os.path.join(outpath, f'chr{the_chr}_{anchorind}_HetPos.txt'), 'w') as outf:    #write chr pos to chr file
     for k,v in out_dict[the_chr].items():
         out_str=k+'\t'+'\t'.join(v)
         outf.write(out_str+'\n')
