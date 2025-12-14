@@ -27,23 +27,33 @@ def check_if_pass_coverage(a_coverage,LOW_COV_THRESH,HIGH_COV_THRESH):
         return 0
 
 def get_genotype(a_list):
-    b_geno=''
-    coverage=0
+    b_geno = ''
+    coverage = 0
+    
     for x in a_list:
-        d=x.split(':')
-        if d[0]=='./.':
-            return [0,'']
-        b_geno=d[0]
-        if len(d)>5: # a snpAD vcf has "GT:DP:A:C:G:T:PP:GQ" in sample field
-            coverage+=int(d[1])
-        else: # it is a GATK called vcf with "GT:DP" (homozygote or missing), or "GT:AD:DP:GQ:PL" (heterozygote) in sample field
-            if len(d)>2:
-                if d[2]=='.':
-                    return [0,'']
-                coverage+=int(d[2])
-            else:
-                coverage+=int(d[1])
-    return [coverage,b_geno]
+        d = x.split(':')
+
+        # genotype missing
+        if d[0] == './.':
+            return [0, '']
+
+        b_geno = d[0]
+
+        # SNPAD should still have DP, just not at d[1]
+        # TRY DP FIRST IF PRESENT
+        if len(d) > 2 and d[2].isdigit():
+            coverage += int(d[2])
+            continue
+
+        # fallback: if DP is in d[1] and is numeric
+        if len(d) > 1 and d[1].isdigit():
+            coverage += int(d[1])
+            continue
+
+        # otherwise: cannot interpret coverage
+        return [0, '']
+
+    return [coverage, b_geno]
 
 def get_allele_support(a_list,ref_nt,alt_nt):
     ref_cov=0
@@ -86,13 +96,6 @@ outpath=sys.argv[6]
 #input()
 
 ###########################################################################################
-
-#Get vcf file name
-file_dict = get_file_name.get_name_file_dict()
-anchorind_vcf = vcf_path+'/'+file_dict[anchorind]
-in_vcf = anchorind_vcf.split('.vc')
-anchor_vcf = in_vcf[0] + the_chr + '.vc' + in_vcf[1]
-
 ##########################
 ##########################
 
@@ -105,7 +108,7 @@ ANCESTRAL_FILTER=['A','C','G','T']
 # Upper DP threshold is 95% of coverage dist
 # Lower threshold is higher of 5% of coverage dist, or 8X (to ensure reliable diploid calls)
 
-header_list=['cov','freq']
+header_list=['freq','cov']
 df=pd.read_csv(cov_path, sep="\t", names=header_list)
 
 # filter out the top and bottom 5% of read lengths (as outliers)
@@ -121,73 +124,102 @@ HIGH_COV_THRESH = max(df_filt['cov'])
 
 out_dict={the_chr:{}}
 
-#Begin reading in VCF and ANC files, and ensure lines in-sync
-with ZipFile(ancPath+'/Ancestral_states.zip','r') as z:
-    with z.open('Ancestral_states/chr'+the_chr+'.txt','r') as anc_file:
-        with gzip.open(anchor_vcf,'rt',encoding='utf-8') as AnchorInd:
-            l='##'
-            while l[0]=='#':
-                l=AnchorInd.readline()
-            anc_l=anc_file.readline().decode('utf-8')
-            while l and anc_l:
-                vcf_data=l.strip().split()
-                anc_d=anc_l.strip().split()
-                vcf_pos=vcf_data[1]
-                anc_pos=anc_d[0]
-        
-                while not vcf_pos==anc_pos:
-                    if int(vcf_pos) == min(int(vcf_pos), int(anc_pos)):
-                        l=AnchorInd.readline()
-                    elif int(anc_pos) == min(int(vcf_pos), int(anc_pos)):
-                        anc_l = anc_file.readline().decode('utf-8')
-                    if l and anc_l:
-                        vcf_data = l.strip().split()
-                        vcf_pos = vcf_data[1]
-                        anc_d = anc_l.strip().split()
-                        anc_pos = anc_d[0]
-                    else:
-                        break
-                if not anc_pos == vcf_pos:   # ugly way to catch mismatched positions at end of files and allow to finish without error
+with open(ancPath, 'r') as anc_file:
+    with gzip.open(vcf_path, 'rt', encoding='utf-8') as AnchorInd:
+
+        # ---- Parse VCF header; find anchor individual column ----
+        line = AnchorInd.readline()
+        while line.startswith("##"):
+            line = AnchorInd.readline()
+
+        # Now at #CHROM line
+        header_fields = line.strip().split('\t')
+        sample_names = header_fields[9:]
+
+        if anchorind not in sample_names:
+            sys.exit(f"ERROR: Anchor individual '{anchorind}' not found in VCF header.")
+
+        anchor_idx = 9 + sample_names.index(anchorind)
+
+        # Start reading data lines
+        l = AnchorInd.readline()
+        anc_l = anc_file.readline()
+
+        while l and anc_l:
+            vcf_data = l.strip().split()
+            anc_d = anc_l.strip().split()
+
+            vcf_pos = vcf_data[1]
+            anc_pos = anc_d[1]
+
+            # Sync positions between VCF and ancestral states file
+            while vcf_pos != anc_pos:
+                if int(vcf_pos) < int(anc_pos):
+                    l = AnchorInd.readline()
+                else:
+                    anc_l = anc_file.readline()
+
+                if not l or not anc_l:
                     break
 
-                at_pos=int(float(anc_pos))
-                anc_support=anc_d[2]
-                if anc_support=='3':    #ANC has full support in outgroup
-                    qual=vcf_data[5]
-                    if not qual=='.' and int(float(qual)) >= 30:
-                        flag=vcf_data[6]
-##############################CONSIDER IF YOU WANT OTHER FILTERS#############################
-                        if not (flag in ['FAIL','FAIL1','FAIL2','FAIL3']):
-                            anc_nt=anc_d[1]
-                            ref_nt=vcf_data[3]
-                            alt_nt=vcf_data[4]
-                            [coverage,genotype]=get_genotype(vcf_data[9:])
-                            if check_if_pass_coverage(coverage,LOW_COV_THRESH,HIGH_COV_THRESH):
-#############################################################################################
-                                if anc_nt in ANCESTRAL_FILTER:
-                                    var_form=check_if_ok_and_get_var_form(anc_nt,ref_nt,alt_nt)
-                                    if var_form=='OK_POLY':
-                                        if (genotype in ['1/0','0/1']): # site is heterozygote
-                                            [ref_coverage,alt_coverage]=get_allele_support(vcf_data[9:],ref_nt,alt_nt) # find coverages of alleles
-                                            anchor_frac_ref = ref_coverage/coverage
-                                            anchor_frac_alt = alt_coverage/coverage 
-                                            if not min(anchor_frac_ref,anchor_frac_alt)<0.3333: # ensure proportion of alleles at least a third (to reduce risk of sequencing errors)         
-                                                if (anc_nt in [ref_nt,alt_nt]):
-                                                    if anc_nt==ref_nt: # if the vcf site is heterozygous with the ref allele matching the ancestral state
-                                                        out_dict[the_chr].update({vcf_pos: [ref_nt,alt_nt]})
-                                                    else: # heterozygous with the alt allele matching ancestral state
-                                                        out_dict[the_chr].update({vcf_pos: [alt_nt,ref_nt]})
-                l=AnchorInd.readline()
-                anc_l=anc_file.readline().decode('utf-8')
+                vcf_data = l.strip().split()
+                anc_d = anc_l.strip().split()
+                vcf_pos = vcf_data[1]
+                anc_pos = anc_d[1]
 
+            if not (l and anc_l and vcf_pos == anc_pos):
+                break
 
+            at_pos = int(anc_pos)
+            anc_support = anc_d[3]
+
+            # Only consider ancestral states with full support
+            if anc_support == '3':
+                qual = vcf_data[5]
+                if qual != '.' and int(float(qual)) >= 30:
+                    flag = vcf_data[6]
+                    if flag not in ['FAIL','FAIL1','FAIL2','FAIL3']:
+
+                        anc_nt = anc_d[2]
+                        ref_nt = vcf_data[3]
+                        alt_nt = vcf_data[4]
+
+                        # --- ONLY USE THE ANCHOR INDIVIDUAL’S GENOTYPE FIELD ---
+                        sample_field = [vcf_data[anchor_idx]]
+
+                        coverage, genotype = get_genotype(sample_field)
+
+                        if check_if_pass_coverage(coverage, LOW_COV_THRESH, HIGH_COV_THRESH):
+                            if anc_nt in ANCESTRAL_FILTER:
+                                var_form = check_if_ok_and_get_var_form(anc_nt, ref_nt, alt_nt)
+
+                                if var_form == 'OK_POLY':
+                                    if genotype in ['0/1', '1/0']:
+                                        ref_cov, alt_cov = get_allele_support(sample_field, ref_nt, alt_nt)
+
+                                        anchor_frac_ref = ref_cov / coverage
+                                        anchor_frac_alt = alt_cov / coverage
+
+                                        if min(anchor_frac_ref, anchor_frac_alt) >= 0.3333:
+                                            if anc_nt in [ref_nt, alt_nt]:
+                                                if anc_nt == ref_nt:
+                                                    out_dict[the_chr][vcf_pos] = [ref_nt, alt_nt]
+                                                else:
+                                                    out_dict[the_chr][vcf_pos] = [alt_nt, ref_nt]
+
+            # Read next lines
+            l = AnchorInd.readline()
+            anc_l = anc_file.readline()
+            
 
 #Write chr out_dict to text file
-with open(os.path.join(outpath, 'w') as outf:    #write chr pos to chr file
-    for k,v in out_dict[the_chr].items():
-        out_str=k+'\t'+'\t'.join(v)
-        outf.write(out_str+'\n')
+outfile = os.path.join(outpath, f"{the_chr}_{anchorind}_HetPos.txt")
+with open(outfile, 'w') as outf:
+    for pos, alleles in out_dict[the_chr].items():
+        outf.write(f"{pos}\t{alleles[0]}\t{alleles[1]}\n")
 
+print(f"Done. Wrote {len(out_dict[the_chr])} heterozygous anchor positions to:")
+print(f"  {outfile}")
 
 ##############################################################################################
 ##############################################################################################
