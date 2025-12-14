@@ -73,13 +73,14 @@ def check_if_ok_and_get_var_form(anc_nt,ref_nt,alt_nt):
 
 #Throw an error unless you have at least two arguments to command line
 if len(sys.argv)<5:
-    sys.exit('Input Error: The Anchor continuity test PART1 requires a command line input of format: python script.py the_chr anchor_ind ancPath vcf_path outpath')
+    sys.exit('Input Error: The Anchor continuity test PART1 requires a command line input of format: python script.py the_chr anchor_ind ancPath cov_path vcf_path outpath')
 
 the_chr=sys.argv[1]
 anchorind=sys.argv[2]
 ancPath=sys.argv[3]
-vcf_path=sys.argv[4]
-outpath=sys.argv[5]
+cov_path=sys.argv[4]
+vcf_path=sys.argv[5]
+outpath=sys.argv[6]
 #print(the_chr)
 #print(anchorind)
 #input()
@@ -105,7 +106,7 @@ ANCESTRAL_FILTER=['A','C','G','T']
 # Lower threshold is higher of 5% of coverage dist, or 8X (to ensure reliable diploid calls)
 
 header_list=['cov','freq']
-df=pd.read_csv('DIR_cov_distr/'+anchorind, sep="\t", names=header_list)
+df=pd.read_csv(cov_path, sep="\t", names=header_list)
 
 # filter out the top and bottom 5% of read lengths (as outliers)
 df['cum_percent'] = 100*(df.freq.cumsum() / df.freq.sum())
