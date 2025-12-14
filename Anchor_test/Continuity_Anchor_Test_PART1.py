@@ -72,7 +72,7 @@ def check_if_ok_and_get_var_form(anc_nt,ref_nt,alt_nt):
 #############################################################################
 
 #Throw an error unless you have at least two arguments to command line
-if len(sys.argv)<5:
+if len(sys.argv)<7:
     sys.exit('Input Error: The Anchor continuity test PART1 requires a command line input of format: python script.py the_chr anchor_ind ancPath cov_path vcf_path outpath')
 
 the_chr=sys.argv[1]
