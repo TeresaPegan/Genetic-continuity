@@ -141,6 +141,16 @@ def make_out_str(a_list):
         b_str+=str(x)+'\t'
     return b_str[:-1]
 
+# def check_der(haploid_gt, anc_nt, der_nt):
+#     if haploid_gt == anc_nt:
+#         pass  # nothing
+#     elif haploid_gt == der_nt:
+#         print(f"derived allele here", vcf_pos)
+#     elif (haploid_gt != anc_nt) and (haploid_gt != der_nt) and (haploid_gt in nt_set):
+#         print(f"messed up nt here", vcf_pos)
+#     else:
+#         pass  # nothing
+
 #############################################################################
 #############################################################################
 #############################################################################
@@ -261,6 +271,7 @@ with open(het_file_path, 'r') as het_file:
                                 match_count = orient_and_get_count_haploid(
                                     haploid_genotype, het_anc, het_der
                                 )
+                                #check_der(haploid_genotype, het_anc, het_der)
                                 count_dict[the_chr][(win_start, win_end)] = [
                                     count_dict[the_chr][(win_start, win_end)][i] + match_count[i]
                                     for i in range(6)
